@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Expense Tracker</title>
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+	<main>
+		<h1>Expense Tracker</h1>
+		<p class="subtitle">Record and review your expenses.</p>
+
+		<form id="expense-form">
+			<input id="description" name="description" placeholder="What was it for?" required maxlength="100">
+			<input id="amount" name="amount" type="number" placeholder="Amount" min="0.01" step="0.01" required>
+			<button id="submit-button" type="submit">Add expense</button>
+		</form>
+		<p id="status" role="status" aria-live="polite"></p>
+
+		<section aria-label="Expenses">
+			<div class="summary">
+				<h2>Recent expenses</h2>
+				<span id="total">$0.00</span>
+			</div>
+			<ul id="expense-list"><li class="empty">Loading expenses...</li></ul>
+		</section>
+	</main>
+
+	<script>
+		// Expected API: GET /api/expenses returns [{ id, description, amount }].
+		// POST /api/expenses accepts { description, amount } and returns the saved expense.
+		const API_URL = "http://localhost:8080/api/expenses";
+		const form = document.querySelector("#expense-form");
+		const descriptionInput = document.querySelector("#description");
+		const amountInput = document.querySelector("#amount");
+		const list = document.querySelector("#expense-list");
+		const totalElement = document.querySelector("#total");
+		const statusElement = document.querySelector("#status");
+		const submitButton = document.querySelector("#submit-button");
+		const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+		function showStatus(message, isError = false) {
+			statusElement.textContent = message;
+			statusElement.classList.toggle("error", isError);
+		}
+
+		function renderExpenses(expenses) {
+			list.replaceChildren();
+			let total = 0;
+
+			if (expenses.length === 0) {
+				const emptyMessage = document.createElement("li");
+				emptyMessage.className = "empty";
+				emptyMessage.textContent = "No expenses yet.";
+				list.append(emptyMessage);
+			}
+
+			for (const expense of expenses) {
+				const item = document.createElement("li");
+				const name = document.createElement("span");
+				const amount = document.createElement("strong");
+				const value = Number(expense.amount);
+
+				name.className = "expense-name";
+				name.textContent = expense.description;
+				amount.textContent = currency.format(value);
+				item.append(name, amount);
+				list.append(item);
+				total += value;
+			}
+
+			totalElement.textContent = currency.format(total);
+		}
+
+		async function loadExpenses() {
+			try {
+				const response = await fetch(API_URL);
+				if (!response.ok) throw new Error("Could not load expenses.");
+				const expenses = await response.json();
+				if (!Array.isArray(expenses)) throw new Error("The API must return a list of expenses.");
+				renderExpenses(expenses);
+				showStatus("");
+			} catch (error) {
+				list.replaceChildren();
+				showStatus(error.message + " Check that the API is running and allows this page's origin.", true);
+			}
+		}
+
+		form.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			submitButton.disabled = true;
+			showStatus("Saving...");
+
+			try {
+				const response = await fetch(API_URL, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						description: descriptionInput.value.trim(),
+						amount: Number(amountInput.value)
+					})
+				});
+				if (!response.ok) throw new Error("Could not save expense.");
+				form.reset();
+				await loadExpenses();
+				showStatus("Expense added.");
+			} catch (error) {
+				showStatus(error.message + " Check that the API is running and allows this page's origin.", true);
+			} finally {
+				submitButton.disabled = false;
+			}
+		});
+
+		loadExpenses();
+	</script>
+</body>
+</html>
